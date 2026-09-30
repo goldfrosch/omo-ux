@@ -1,0 +1,24 @@
+{
+  "name": "omo-ux",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Opencode-style UI layer for omo, applied from outside omo so updates don't overwrite it",
+  "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ],
+    "themes": [
+      "./themes"
+    ]
+  },
+  "scripts": {
+    "setup": "bun scripts/setup.ts",
+    "check": "bun scripts/setup.ts --check",
+    "uninstall": "bun scripts/setup.ts --uninstall",
+    "typecheck": "bunx --bun tsc -p ."
+  }
+}

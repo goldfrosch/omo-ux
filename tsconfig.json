@@ -1,0 +1,22 @@
+{
+  // Type-check only. At runtime senpi's loader aliases these imports to the host's own modules,
+  // so the paths below just point the compiler at the globally installed engine's declarations.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "typeRoots": ["../../.bun/install/global/node_modules/@code-yeongyu/senpi/node_modules/@types"],
+    "types": ["node"],
+    "paths": {
+      "@code-yeongyu/senpi": ["../../.bun/install/global/node_modules/@code-yeongyu/senpi/dist/index.d.ts"],
+      "@earendil-works/pi-tui": ["../../.bun/install/global/node_modules/@code-yeongyu/senpi/node_modules/@earendil-works/pi-tui/dist/index.d.ts"],
+      "@earendil-works/pi-ai": ["../../.bun/install/global/node_modules/@code-yeongyu/senpi/node_modules/@earendil-works/pi-ai/dist/index.d.ts"]
+    }
+  },
+  "include": ["extensions", "src", "scripts"]
+}
