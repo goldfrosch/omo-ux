@@ -1,5 +1,6 @@
 /**
- * Applies the omo-ux profile to omo's agent dir and registers this package there.
+ * Applies the omo-ux profile to omo's agent dir and registers this package there, unless an
+ * `omo install git:...` entry already loads this checkout.
  *
  *   bun scripts/setup.ts              apply (idempotent; re-run after an omo update if /ux reports drift)
  *   bun scripts/setup.ts --check      report drift only; exits 1 when something is off
@@ -87,6 +88,39 @@ function isThisPackage(entry: unknown): boolean {
 	return samePath(resolve(agentDir, expanded), packageRoot);
 }
 
+/**
+ * Whether an entry already makes omo load this checkout: a local path to it, or the git source that
+ * `omo install` cloned it from (listing the path as well would load the extension twice).
+ */
+function loadsThisPackage(entry: unknown): boolean {
+	if (isThisPackage(entry)) return true;
+	const source = typeof entry === "string" ? entry : (entry as { source?: unknown } | null)?.source;
+	const cloneDir = typeof source === "string" ? gitCloneDir(source) : undefined;
+	return cloneDir !== undefined && samePath(cloneDir, packageRoot);
+}
+
+/**
+ * senpi clones a git source to <agentDir>/git/<host>/<path>, dropping the @ref and ".git". Covers the
+ * forms senpi accepts: git:host/path, git:git@host:path, and https/ssh/git URLs with or without git:.
+ */
+function gitCloneDir(source: string): string | undefined {
+	const url = source.startsWith("git:") ? source.slice(4).trim() : source;
+	let hostPath: string | undefined;
+	if (/^(https?|ssh|git):\/\//i.test(url)) hostPath = urlHostPath(url);
+	else if (source.startsWith("git:")) hostPath = url.replace(/^git@([^:/]+):/, "$1/");
+	if (!hostPath) return undefined;
+	return join(agentDir, "git", hostPath.replace(/@[^/]*$/, "").replace(/\.git$/, ""));
+}
+
+function urlHostPath(url: string): string | undefined {
+	try {
+		const parsed = new URL(url);
+		return parsed.hostname + parsed.pathname;
+	} catch {
+		return undefined;
+	}
+}
+
 function toKeys(value: unknown): string[] {
 	if (typeof value === "string") return [value.toLowerCase()];
 	if (Array.isArray(value)) return value.filter((key): key is string => typeof key === "string").map((key) => key.toLowerCase());
@@ -131,7 +165,7 @@ function apply(): string[] {
 		changes.push(`settings ${key}: ${show(settings[key])} -> ${JSON.stringify(value)}`);
 	}
 	const packages = Array.isArray(settings.packages) ? settings.packages : [];
-	if (!packages.some(isThisPackage)) {
+	if (!packages.some(loadsThisPackage)) {
 		nextSettings.packages = [...packages, packageRoot];
 		state.addedPackage = true;
 		changes.push(`settings packages: + ${packageRoot}`);
@@ -194,7 +228,7 @@ function drift(): string[] {
 		if (settings[key] !== want) problems.push(`settings ${key} is ${show(settings[key])}, want ${JSON.stringify(want)}`);
 	}
 	const packages = Array.isArray(settings.packages) ? settings.packages : [];
-	if (!packages.some(isThisPackage)) problems.push(`settings packages does not list ${packageRoot}`);
+	if (!packages.some(loadsThisPackage)) problems.push(`settings packages does not list ${packageRoot}`);
 	const keybindings = readObject(paths.keybindings) ?? {};
 	for (const id of PALETTE_BLOCKERS) {
 		if (needsOverride(keybindings[id])) problems.push(`keybindings ${id} still resolves to ${PALETTE_KEY}`);
