@@ -24,7 +24,24 @@ omo(senpi 엔진) 위에 얹는 opencode 스타일 UI 레이어입니다. omo �
 | `/resume` 목록의 경로 표시 토글 | `Ctrl+P` | `Alt+P` |
 | `/favorite-models`의 프로바이더 토글 | `Ctrl+P` | `Alt+P` |
 
-## 설치 / 확인 / 제거
+## 설치
+
+omo와 git이 있으면 어느 PC에서든 버전을 골라 설치할 수 있습니다. 버전 목록은 [Releases](https://github.com/goldfrosch/omo-ux/releases)에 있습니다.
+
+```sh
+omo install git:github.com/goldfrosch/omo-ux@v0.1.0
+bun $HOME/.omo/agent/git/github.com/goldfrosch/omo-ux/scripts/setup.ts
+```
+
+첫 줄은 그 태그를 `~/.omo/agent/git/github.com/goldfrosch/omo-ux`에 받아 omo에 등록하고, 둘째 줄은 전체화면·테마·단축키 설정을 적용합니다. `~` 대신 `$HOME`을 쓰는 건 Windows PowerShell 5.1이 외부 명령에 `~`를 풀어 주지 않기 때문입니다. agent 폴더를 옮겨 쓰는 경우(`OMO_CODING_AGENT_DIR` 등)에는 omo에서 `/ux`를 열면 나오는 setup 명령을 그대로 쓰면 됩니다.
+
+- npm 없이 bun만 있는 PC: `omo install`은 받은 폴더에서 기본으로 `npm install`을 실행하므로, 먼저 `~/.omo/agent/settings.json`에 `"npmCommand": ["bun"]`을 넣어 둡니다.
+- 다른 버전으로 바꾸기: `omo install git:github.com/goldfrosch/omo-ux@v0.2.0` 후 omo를 다시 시작합니다. 바뀐 설정이 있는 버전이면 setup 명령도 다시 실행합니다.
+- 제거: setup 명령 뒤에 `--uninstall`을 붙여 설정을 되돌린 다음 `omo remove git:github.com/goldfrosch/omo-ux`를 실행합니다.
+
+## 개발용 설치 / 확인 / 제거
+
+저장소를 clone해서 고치며 쓸 때는 clone한 폴더에서 setup을 실행합니다. 그 폴더가 그대로 omo에 등록되므로, 같은 PC에서 위의 `omo install`과 같이 쓰면 확장이 두 번 올라갑니다.
 
 ```sh
 bun scripts/setup.ts              # 적용 (여러 번 실행해도 안전)
@@ -33,6 +50,15 @@ bun scripts/setup.ts --uninstall  # 적용 전 값으로 되돌림
 ```
 
 omo 안에서는 `/ux`로 상태를 점검하고, `/ux palette`로 팔레트를 엽니다.
+
+## 새 버전 배포
+
+```sh
+bun pm version patch     # minor, major도 가능. package.json을 올리고 vX.Y.Z 커밋과 태그를 만듭니다
+git push --follow-tags   # 태그가 올라가면 GitHub Actions가 Release를 만듭니다
+```
+
+커밋하지 않은 변경이 있으면 `bun pm version`이 멈추니 먼저 커밋해 둡니다.
 
 ## 업데이트 정책
 
