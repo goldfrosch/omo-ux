@@ -1,6 +1,6 @@
 {
   "name": "omo-ux",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Opencode-style UI layer for omo, applied from outside omo so updates don't overwrite it",
   "type": "module",
