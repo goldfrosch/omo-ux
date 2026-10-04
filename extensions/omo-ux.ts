@@ -2,6 +2,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@code-yeongyu/senpi";
 import { getKeybindings, type TUI } from "@earendil-works/pi-tui";
+import { createAskTools } from "../src/ask-tool.ts";
 import { createCommandSource } from "../src/commands.ts";
 import { paletteBlockers, showDoctor } from "../src/doctor.ts";
 import { installCtrlCExit } from "../src/exit.ts";
@@ -29,7 +30,8 @@ export default function omoUx(pi: ExtensionAPI): void {
 		() => (paletteBlockers(getKeybindings()).length === 0 ? `${PALETTE_KEY} commands` : undefined),
 		mouse,
 	);
-	const questions = registerQuestionFlow(pi, () => viewportOf(footer.tui()));
+	const askTools = createAskTools(pi);
+	const questions = registerQuestionFlow(pi, () => viewportOf(footer.tui()), askTools.owns);
 	let stopCtrlC: (() => void) | undefined;
 	let stopReaderKey: (() => void) | undefined;
 
@@ -70,10 +72,20 @@ export default function omoUx(pi: ExtensionAPI): void {
 	});
 
 	pi.on("session_start", (_event, ctx) => {
-		if (!ctx.hasUI || ctx.mode !== "tui") return;
+		const tui = ctx.hasUI && ctx.mode === "tui";
+		const report = (name: string) => (message: string) => {
+			if (tui) ctx.ui.notify(`omo-ux: ${name} disabled (${message})`, "warning");
+		};
+		// The question tool stands in for senpi's in every mode; outside the TUI it uses the host's question UI or reports no user.
+		features.run(
+			"decision screen",
+			() => {
+				if (!askTools.install(ctx)) throw new Error(`senpi's question window is in use; run ${setupHint()} and restart omo`);
+			},
+			report("decision screen"),
+		);
+		if (!tui) return;
 		// The host drops footer, autocomplete wrappers and input listeners on every rebind, so all are re-applied here.
-		const report = (name: string) => (message: string) =>
-			ctx.ui.notify(`omo-ux: ${name} disabled (${message})`, "warning");
 		features.run("footer", () => footer.install(ctx), report("footer"));
 		features.run("command list", () => commands.attach(ctx), report("command list"));
 		features.run(

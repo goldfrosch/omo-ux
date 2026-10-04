@@ -37,5 +37,8 @@ export const DESIRED_KEYBINDINGS: Readonly<Record<string, readonly string[]>> = 
 	"app.models.toggleProvider": ["alt+p"],
 };
 
+/** senpi built-in extensions omo-ux replaces: ask-user's question window gives way to the decision screen. */
+export const DISABLED_BUILTINS: readonly string[] = ["ask-user"];
+
 /** Status keys the footer never shows (compared after trimming). omo publishes its badge as "  omo-native". */
 export const HIDDEN_STATUS_KEYS: readonly string[] = ["omo-native"];

@@ -7,14 +7,14 @@ import {
 	type TUI,
 	type TuiMouseEvent,
 	type TuiMouseEventResult,
-	truncateToWidth,
-	visibleWidth,
 } from "@earendil-works/pi-tui";
 import { prewrapMarkdown } from "./markdown-wrap.ts";
+import { holdOverlay, overlayOpen } from "./overlay.ts";
+import { solidLine } from "./paint.ts";
 import { READER_KEY } from "./profile.ts";
 import type { QuestionItem } from "./question-input.ts";
 import { latestReplyText } from "./transcript.ts";
-import { fit, joinEnds } from "./ui.ts";
+import { joinEnds } from "./ui.ts";
 import { wrapWords } from "./wrap.ts";
 
 export interface ReaderContent {
@@ -22,7 +22,7 @@ export interface ReaderContent {
 	readonly questions: readonly QuestionItem[];
 }
 
-interface Body {
+export interface RenderedBlocks {
 	readonly lines: readonly string[];
 	readonly lastBlockStart: number;
 }
@@ -37,19 +37,16 @@ const CLOSE_KEYS = ["enter", "escape", "ctrl+c", READER_KEY] as const;
 const HINTS = "↑↓ PgUp PgDn scroll · g/G top/end · enter/esc close";
 const HINTS_ASKING = "↑↓ PgUp PgDn scroll · g/G top/end · enter answer";
 const OPTION_INDENT = "     ";
+const TEXT_BG = "customMessageBg";
+const BAR_BG = "userMessageBg";
 
-let reading = false;
-
-export async function openReader(ctx: ExtensionContext, content: ReaderContent): Promise<void> {
-	reading = true;
-	try {
-		await ctx.ui.custom<void>((tui, theme, _keybindings, done) => new ReaderView(content, { tui, theme, done }), {
+export function openReader(ctx: ExtensionContext, content: ReaderContent): Promise<void> {
+	return holdOverlay(() =>
+		ctx.ui.custom<void>((tui, theme, _keybindings, done) => new ReaderView(content, { tui, theme, done }), {
 			overlay: true,
 			overlayOptions: { anchor: "top-left", width: "100%", maxHeight: "100%" },
-		});
-	} finally {
-		reading = false;
-	}
+		}),
+	);
 }
 
 export async function readLatest(ctx: ExtensionContext, questions: readonly QuestionItem[]): Promise<void> {
@@ -64,7 +61,7 @@ export async function readLatest(ctx: ExtensionContext, questions: readonly Ques
 /** A raw input listener, so the key also works while senpi's question window has focus. */
 export function installReaderKey(ctx: ExtensionContext, pending: () => readonly QuestionItem[]): () => void {
 	return ctx.ui.onTerminalInput((data) => {
-		if (reading || !matchesKey(data, READER_KEY) || isKeyRelease(data)) return undefined;
+		if (overlayOpen() || !matchesKey(data, READER_KEY) || isKeyRelease(data)) return undefined;
 		readLatest(ctx, pending()).catch((error: unknown) => {
 			ctx.ui.notify(`omo-ux: reader failed (${error instanceof Error ? error.message : String(error)})`, "warning");
 		});
@@ -72,14 +69,25 @@ export function installReaderKey(ctx: ExtensionContext, pending: () => readonly 
 	});
 }
 
+export function renderBlocks(blocks: readonly string[], width: number): RenderedBlocks {
+	const lines: string[] = [];
+	let lastBlockStart = 0;
+	blocks.forEach((block, index) => {
+		if (index > 0) lines.push("");
+		lastBlockStart = lines.length;
+		lines.push(...new Markdown(block, 0, 0, getMarkdownTheme(), undefined, { transform: prewrapMarkdown }).render(width));
+	});
+	return { lines, lastBlockStart };
+}
+
 export function measureBlocks(blocks: readonly string[], width: number): number {
-	return blocks.reduce((rows, block, index) => rows + (index > 0 ? 1 : 0) + renderMarkdown(block, width).length, 0);
+	return renderBlocks(blocks, width).lines.length;
 }
 
 class ReaderView implements Component {
 	private readonly content: ReaderContent;
 	private readonly deps: ViewDeps;
-	private body: Body | undefined;
+	private body: RenderedBlocks | undefined;
 	private bodyWidth = 0;
 	private offset: number | undefined;
 	private viewport = 1;
@@ -117,13 +125,14 @@ class ReaderView implements Component {
 		const lastOffset = Math.max(0, lines.length - this.viewport);
 		// Open on the last screenful, but never in the middle of the newest block.
 		this.offset = Math.min(lastOffset, this.offset ?? Math.min(lastBlockStart, lastOffset));
-		const bar = (text: string) => theme.bg("customMessageBg", fit(text, width));
 		const title = theme.fg("accent", theme.bold(asking ? " Read before answering" : " Last reply"));
-		const screen = [bar(joinEnds(title, theme.fg("dim", `${this.position(lines.length)} `), width))];
-		for (let row = 0; row < this.viewport; row++) screen.push(` ${lines[this.offset + row] ?? ""}`);
-		if (asking) screen.push(bar(theme.fg("text", ` ? ${summarize(this.content.questions)}`)));
-		screen.push(bar(theme.fg("dim", ` ${asking ? HINTS_ASKING : HINTS}`)));
-		return screen.map((line) => (visibleWidth(line) > width ? truncateToWidth(line, width) : line));
+		const screen = [solidLine(theme, BAR_BG, joinEnds(title, theme.fg("dim", `${this.position(lines.length)} `), width), width)];
+		for (let row = 0; row < this.viewport; row++) {
+			screen.push(solidLine(theme, TEXT_BG, ` ${lines[this.offset + row] ?? ""}`, width));
+		}
+		if (asking) screen.push(solidLine(theme, BAR_BG, theme.fg("text", ` ? ${summarize(this.content.questions)}`), width));
+		screen.push(solidLine(theme, BAR_BG, theme.fg("dim", ` ${asking ? HINTS_ASKING : HINTS}`), width));
+		return screen;
 	}
 
 	invalidate(): void {
@@ -154,16 +163,10 @@ class ReaderView implements Component {
 	}
 }
 
-function layoutBody(content: ReaderContent, width: number, theme: Theme): Body {
-	const lines: string[] = [];
-	let lastBlockStart = 0;
-	content.blocks.forEach((block, index) => {
-		if (index > 0) lines.push("");
-		lastBlockStart = lines.length;
-		lines.push(...renderMarkdown(block, width));
-	});
-	if (content.questions.length > 0) lines.push(...questionLines(content.questions, width, theme));
-	return { lines, lastBlockStart };
+function layoutBody(content: ReaderContent, width: number, theme: Theme): RenderedBlocks {
+	const rendered = renderBlocks(content.blocks, width);
+	if (content.questions.length === 0) return rendered;
+	return { lines: [...rendered.lines, ...questionLines(content.questions, width, theme)], lastBlockStart: rendered.lastBlockStart };
 }
 
 function questionLines(questions: readonly QuestionItem[], width: number, theme: Theme): string[] {
@@ -184,10 +187,6 @@ function questionLines(questions: readonly QuestionItem[], width: number, theme:
 		lines.push("");
 	}
 	return lines;
-}
-
-function renderMarkdown(text: string, width: number): string[] {
-	return new Markdown(text, 0, 0, getMarkdownTheme(), undefined, { transform: prewrapMarkdown }).render(width);
 }
 
 function summarize(questions: readonly QuestionItem[]): string {

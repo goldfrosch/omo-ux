@@ -15,7 +15,8 @@
     "paths": {
       "@code-yeongyu/senpi": ["../../.bun/install/global/node_modules/@code-yeongyu/senpi/dist/index.d.ts"],
       "@earendil-works/pi-tui": ["../../.bun/install/global/node_modules/@code-yeongyu/senpi/node_modules/@earendil-works/pi-tui/dist/index.d.ts"],
-      "@earendil-works/pi-ai": ["../../.bun/install/global/node_modules/@code-yeongyu/senpi/node_modules/@earendil-works/pi-ai/dist/index.d.ts"]
+      "@earendil-works/pi-ai": ["../../.bun/install/global/node_modules/@code-yeongyu/senpi/node_modules/@earendil-works/pi-ai/dist/index.d.ts"],
+      "typebox": ["../../.bun/install/global/node_modules/@code-yeongyu/senpi/node_modules/typebox/build/index.d.mts"]
     }
   },
   "include": ["extensions", "src", "scripts"]

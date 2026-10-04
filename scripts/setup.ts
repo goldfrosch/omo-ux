@@ -14,7 +14,7 @@ import { copyFileSync, existsSync, readFileSync, renameSync, rmSync, writeFileSy
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DESIRED_KEYBINDINGS, DESIRED_SETTINGS, PALETTE_BLOCKERS, PALETTE_KEY } from "../src/profile.ts";
+import { DESIRED_KEYBINDINGS, DESIRED_SETTINGS, DISABLED_BUILTINS, PALETTE_BLOCKERS, PALETTE_KEY } from "../src/profile.ts";
 
 type JsonObject = Record<string, unknown>;
 
@@ -127,6 +127,13 @@ function toKeys(value: unknown): string[] {
 	return [];
 }
 
+/** senpi's list of built-in extensions it skips loading; omo-ux adds its entries and removes only those again. */
+const DISABLED_KEY = "disabledBuiltinExtensions";
+
+function stringList(value: unknown): string[] {
+	return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
 /** An action needs our binding while it still uses the default or maps the palette key. */
 const needsOverride = (current: unknown) => current === undefined || toKeys(current).includes(PALETTE_KEY);
 const remember = (object: JsonObject, key: string): Previous =>
@@ -163,6 +170,13 @@ function apply(): string[] {
 		state.settings[key] ??= remember(settings, key);
 		nextSettings[key] = value;
 		changes.push(`settings ${key}: ${show(settings[key])} -> ${JSON.stringify(value)}`);
+	}
+	const disabled = stringList(settings[DISABLED_KEY]);
+	const toDisable = DISABLED_BUILTINS.filter((id) => !disabled.includes(id));
+	if (toDisable.length > 0) {
+		state.settings[DISABLED_KEY] ??= remember(settings, DISABLED_KEY);
+		nextSettings[DISABLED_KEY] = [...disabled, ...toDisable];
+		changes.push(`settings ${DISABLED_KEY}: + ${toDisable.join(", ")}`);
 	}
 	const packages = Array.isArray(settings.packages) ? settings.packages : [];
 	if (!packages.some(loadsThisPackage)) {
@@ -206,7 +220,15 @@ function uninstall(): string[] {
 	}
 
 	const settings = readObject(paths.settings) ?? {};
+	const disabledBefore = state.settings[DISABLED_KEY];
+	if (disabledBefore !== undefined) {
+		const remaining = stringList(settings[DISABLED_KEY]).filter((id) => !DISABLED_BUILTINS.includes(id));
+		if (remaining.length === 0 && !disabledBefore.existed) delete settings[DISABLED_KEY];
+		else settings[DISABLED_KEY] = remaining;
+		changes.push(`settings ${DISABLED_KEY}: - ${DISABLED_BUILTINS.join(", ")}`);
+	}
 	for (const [key, previous] of Object.entries(state.settings)) {
+		if (key === DISABLED_KEY) continue;
 		const ours = (DESIRED_SETTINGS as Record<string, unknown>)[key];
 		if (restoreIfOurs(settings, key, previous, ours)) changes.push(`settings ${key} -> ${show(previous.value)}`);
 	}
@@ -227,6 +249,8 @@ function drift(): string[] {
 	for (const [key, want] of Object.entries(DESIRED_SETTINGS)) {
 		if (settings[key] !== want) problems.push(`settings ${key} is ${show(settings[key])}, want ${JSON.stringify(want)}`);
 	}
+	const stillLoaded = DISABLED_BUILTINS.filter((id) => !stringList(settings[DISABLED_KEY]).includes(id));
+	if (stillLoaded.length > 0) problems.push(`settings ${DISABLED_KEY} does not list ${stillLoaded.join(", ")}`);
 	const packages = Array.isArray(settings.packages) ? settings.packages : [];
 	if (!packages.some(loadsThisPackage)) problems.push(`settings packages does not list ${packageRoot}`);
 	const keybindings = readObject(paths.keybindings) ?? {};

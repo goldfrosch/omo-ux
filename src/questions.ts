@@ -30,11 +30,11 @@ export interface QuestionFlow {
  * the text written before the question would not fit above the overlay, the reader shows it first; then the
  * question text is re-broken at word boundaries for the overlay's width.
  */
-export function registerQuestionFlow(pi: ExtensionAPI, viewport: () => Viewport): QuestionFlow {
+export function registerQuestionFlow(pi: ExtensionAPI, viewport: () => Viewport, decisionScreen: () => boolean): QuestionFlow {
 	let pending: { readonly id: string; readonly questions: readonly QuestionItem[] } | undefined;
 	pi.on("tool_call", async (event, ctx) => {
 		const flag = WAIT_FLAG[event.toolName];
-		if (flag === undefined || ctx.mode !== "tui") return;
+		if (flag === undefined || ctx.mode !== "tui" || decisionScreen()) return;
 		// senpi documents in-place mutation of event.input as the way to patch tool arguments.
 		const input = event.input as Record<string, unknown>;
 		input[flag] = true;
