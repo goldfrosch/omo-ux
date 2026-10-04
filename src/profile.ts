@@ -6,9 +6,10 @@
 
 export const THEME_NAME = "opencode-ux";
 export const PALETTE_KEY = "ctrl+p";
+export const READER_KEY = "f3";
 
 /** senpi versions this profile was verified against. Others still load; `/ux` only flags them. */
-export const TESTED_SENPI_VERSIONS: readonly string[] = ["2026.9.26"];
+export const TESTED_SENPI_VERSIONS: readonly string[] = ["2026.9.26", "2026.10.5"];
 
 export const DESIRED_SETTINGS = {
 	tuiMode: "fullscreen",

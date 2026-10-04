@@ -1,16 +1,19 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@code-yeongyu/senpi";
-import { getKeybindings } from "@earendil-works/pi-tui";
+import { getKeybindings, type TUI } from "@earendil-works/pi-tui";
 import { createCommandSource } from "../src/commands.ts";
 import { paletteBlockers, showDoctor } from "../src/doctor.ts";
 import { installCtrlCExit } from "../src/exit.ts";
 import { FeatureLog } from "../src/features.ts";
 import { createFooter } from "../src/footer.ts";
+import { prewrapMarkdown } from "../src/markdown-wrap.ts";
 import { createMouseKeeper, mouseCaptureWanted } from "../src/mouse.ts";
 import { openPalette } from "../src/palette.ts";
 import { PALETTE_KEY } from "../src/profile.ts";
-import { registerBlockingQuestions } from "../src/questions.ts";
+import { registerQuestionFlow, type Viewport } from "../src/questions.ts";
+import { installReaderKey, readLatest } from "../src/reader.ts";
+import { registerReadingRules } from "../src/rules.ts";
 
 /**
  * omo-ux entry. Only public extension API is used: omo itself is never patched, so an omo update
@@ -26,9 +29,18 @@ export default function omoUx(pi: ExtensionAPI): void {
 		() => (paletteBlockers(getKeybindings()).length === 0 ? `${PALETTE_KEY} commands` : undefined),
 		mouse,
 	);
+	const questions = registerQuestionFlow(pi, () => viewportOf(footer.tui()));
 	let stopCtrlC: (() => void) | undefined;
+	let stopReaderKey: (() => void) | undefined;
 
-	registerBlockingQuestions(pi);
+	// Load-time features have no UI to warn in yet; FeatureLog keeps the failure and `/ux` shows it.
+	const keptForDoctor = () => undefined;
+	features.run(
+		"korean word wrap",
+		() => pi.registerMarkdownTransformer((markdown, { availableWidth }) => prewrapMarkdown(markdown, availableWidth)),
+		keptForDoctor,
+	);
+	features.run("reading rules", () => registerReadingRules(pi), keptForDoctor);
 
 	pi.registerShortcut(PALETTE_KEY, {
 		description: "Command palette: commands and shortcuts (omo-ux)",
@@ -36,9 +48,9 @@ export default function omoUx(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("ux", {
-		description: "omo-ux: `/ux` checks the setup, `/ux palette` opens the palette",
+		description: "omo-ux: `/ux` checks the setup, `/ux palette` opens the palette, `/ux read` re-reads the last reply",
 		getArgumentCompletions: (prefix) =>
-			["palette", "doctor"].filter((name) => name.startsWith(prefix)).map((name) => ({ value: name, label: name })),
+			["palette", "read", "doctor"].filter((name) => name.startsWith(prefix)).map((name) => ({ value: name, label: name })),
 		handler: async (args, ctx) => {
 			if (ctx.mode !== "tui") {
 				ctx.ui.notify("omo-ux: /ux needs the interactive TUI", "warning");
@@ -46,6 +58,10 @@ export default function omoUx(pi: ExtensionAPI): void {
 			}
 			if (args.trim() === "palette") {
 				await openPalette(ctx, commands);
+				return;
+			}
+			if (args.trim() === "read") {
+				await readLatest(ctx, questions.pending());
 				return;
 			}
 			const list = await commands.list();
@@ -68,13 +84,30 @@ export default function omoUx(pi: ExtensionAPI): void {
 			},
 			report("ctrl+c exit"),
 		);
+		features.run(
+			"reader key",
+			() => {
+				stopReaderKey?.();
+				stopReaderKey = installReaderKey(ctx, questions.pending);
+			},
+			report("reader key"),
+		);
 		features.run("fullscreen mouse", () => mouse.setWanted(mouseCaptureWanted(ctx.agentDir)), report("fullscreen mouse"));
 	});
 
 	pi.on("session_shutdown", () => {
 		stopCtrlC?.();
 		stopCtrlC = undefined;
+		stopReaderKey?.();
+		stopReaderKey = undefined;
 	});
+}
+
+function viewportOf(tui: TUI | undefined): Viewport {
+	return {
+		columns: tui?.terminal.columns ?? process.stdout.columns ?? 80,
+		rows: tui?.terminal.rows ?? process.stdout.rows ?? 24,
+	};
 }
 
 function setupHint(): string {
